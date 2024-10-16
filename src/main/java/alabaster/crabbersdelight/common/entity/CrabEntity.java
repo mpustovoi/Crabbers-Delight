@@ -32,6 +32,7 @@ import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.DyeItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.CraftingInput;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.Level;
@@ -40,18 +41,15 @@ import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Biomes;
 import net.neoforged.neoforge.fluids.FluidType;
 import org.jetbrains.annotations.Nullable;
-import software.bernie.geckolib.animatable.GeoAnimatable;
 import software.bernie.geckolib.animatable.GeoEntity;
 import software.bernie.geckolib.animatable.instance.AnimatableInstanceCache;
 import software.bernie.geckolib.animatable.instance.SingletonAnimatableInstanceCache;
 import software.bernie.geckolib.animation.AnimatableManager;
-import software.bernie.geckolib.animation.AnimationController;
-import software.bernie.geckolib.animation.PlayState;
-import software.bernie.geckolib.animation.RawAnimation;
 
 import javax.annotation.Nonnull;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.List;
 
 public class CrabEntity extends Animal implements GeoEntity, Bucketable {
     private static final EntityDataAccessor<Integer> VARIANT_ID;
@@ -146,11 +144,10 @@ public class CrabEntity extends Animal implements GeoEntity, Bucketable {
         return super.finalizeSpawn(level, difficulty, reason, spawnData);
     }
 
-    @Override
-    protected void defineSynchedData() {
-        super(new SynchedEntityData.Builder());
-        entityData.set(VARIANT_ID, Color.BLUE.getId());
-        entityData.set(FROM_BUCKET, false);
+    protected void defineSynchedData(SynchedEntityData.Builder builder) {
+        super.defineSynchedData(builder);
+        builder.define(VARIANT_ID, Color.BLUE.getId());
+        builder.define(FROM_BUCKET, false);
     }
 
     @Override
@@ -196,15 +193,23 @@ public class CrabEntity extends Animal implements GeoEntity, Bucketable {
         return crab;
     }
 
-    private DyeColor getOffspringColor(Animal crab1, Animal crab2) {
-        DyeColor dyecolor = ((CrabEntity)crab1).getColor();
-        DyeColor dyecolor1 = ((CrabEntity)crab2).getColor();
-        CraftingContainer craftingcontainer = makeContainer(dyecolor, dyecolor1);
-        return this.level().getRecipeManager().getRecipeFor(RecipeType.CRAFTING, craftingcontainer, this.level()).map((level) -> {
-            return level.assemble(craftingcontainer, this.level().registryAccess());
-        }).map(ItemStack::getItem).filter(DyeItem.class::isInstance).map(DyeItem.class::cast).map(DyeItem::getDyeColor).orElseGet(() -> {
-            return this.level().random.nextBoolean() ? dyecolor : dyecolor1;
-        });
+    private static CraftingInput makeCraftInput(DyeColor color1, DyeColor color2) {
+        return CraftingInput.of(2, 1, List.of(new ItemStack(DyeItem.byColor(color1)), new ItemStack(DyeItem.byColor(color2))));
+    }
+
+    private DyeColor getOffspringColor(Animal father, Animal mother) {
+        DyeColor dyecolor = ((CrabEntity)father).getColor();
+        DyeColor dyecolor1 = ((CrabEntity)mother).getColor();
+        CraftingInput craftinginput = makeCraftInput(dyecolor, dyecolor1);
+        return this.level()
+                .getRecipeManager()
+                .getRecipeFor(RecipeType.CRAFTING, craftinginput, this.level())
+                .map(p_352802_ -> p_352802_.value().assemble(craftinginput, this.level().registryAccess()))
+                .map(ItemStack::getItem)
+                .filter(DyeItem.class::isInstance)
+                .map(DyeItem.class::cast)
+                .map(DyeItem::getDyeColor)
+                .orElseGet(() -> this.level().random.nextBoolean() ? dyecolor : dyecolor1);
     }
 
     private static CraftingContainer makeContainer(DyeColor color1, DyeColor color2) {
@@ -230,25 +235,10 @@ public class CrabEntity extends Animal implements GeoEntity, Bucketable {
         return temptationItems;
     }
 
-    @Override
-    public void registerControllers(AnimatableManager.ControllerRegistrar controllerRegistrar) {
-        controllerRegistrar.add(new AnimationController<GeoAnimatable>(this, "controller", 0, this::predicate));
-    }
-
-    private <T extends GeoAnimatable> PlayState predicate(AnimationState<T> tAnimationState) {
-        if (eve.isStarted();) {
-            tAnimationState.getController().setAnimation(RawAnimation.begin().thenLoop("animation.crab.walk"));
-            return PlayState.CONTINUE;
-        }
-
-        tAnimationState.getController().setAnimation(RawAnimation.begin().thenLoop("animation.crab.idle"));
-        return PlayState.CONTINUE;
-    }
-
-    @Override
-    public boolean canBreatheUnderwater() {
-        return true;
-    }
+    //@Override
+    //public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
+    //    controllers.add(new AnimationController<>(this, "controller", 0, state ->));
+    //}
 
     @Override
     public boolean isPushedByFluid(FluidType type) {
@@ -256,9 +246,13 @@ public class CrabEntity extends Animal implements GeoEntity, Bucketable {
     }
 
     @Nonnull
+    public MobCategory getMobType() {
+        return MobCategory.CREATURE;
+    }
+
     @Override
-    public MobType getMobType() {
-        return MobType.ARTHROPOD;
+    public void registerControllers(AnimatableManager.ControllerRegistrar controllerRegistrar) {
+
     }
 
     @Override
@@ -289,7 +283,7 @@ public class CrabEntity extends Animal implements GeoEntity, Bucketable {
     @SuppressWarnings("deprecation")
     public void saveToBucketTag(@Nonnull ItemStack stack) {
         Bucketable.saveDefaultDataToBucketTag(this, stack);
-        CompoundTag tag = stack.getOrCreateTag();
+        CompoundTag tag = (CompoundTag) stack.getTags();
         tag.putInt("Age", this.getAge());
         tag.putInt("Variant", this.getCrabColor().getId());
     }
